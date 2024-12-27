@@ -7,33 +7,81 @@ import shutil
 from typing import Dict, List, Optional, Tuple
 import mimetypes
 import logging
+import cv2
+from PIL import Image
+import threading
+from tkinter import ttk
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_file_hash(filepath: str) -> str:
     try:
-        hasher  = hashlib.md5()
+        hasher = hashlib.md5()
         with open(filepath, 'rb') as f:
-            buf = f.read(65536)
+            buf = f.read(65536)  # Read in 64kb chunks
             while len(buf) > 0:
                 hasher.update(buf)
-                buf = f.read(65546)
-            return hasher.hexdigest()
+                buf = f.read(65536)
+        return hasher.hexdigest()
     except Exception as e:
-        logger.error(f"Error generating has for {filepath}:{e}")
+        logger.error(f"Error generating hash for {filepath}: {e}")
         return "hash_error"
-    
-def generate_thumbnail(image_path: str, size: Tuple[int,int]= (100, 100)) ->Optional[Image.Image]:
+
+def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optional[Image.Image]:
     try:
-        with Image.open(image_path) as img:
-            if img.mode in ('RGBA', 'P'):
-                img = img.convert('RGB')
-                
-            img.thumbnail(size)
-            return img
+        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            # Handle video files
+            cap = cv2.VideoCapture(file_path)
+            ret, frame = cap.read()
+            cap.release()
+            
+            if ret:
+                # Convert BGR to RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+            else:
+                return None
+        else:
+            # Handle image files
+            img = Image.open(file_path)
+        
+        # Convert to RGB if necessary
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        # Get original dimensions
+        orig_width = img.width
+        orig_height = img.height
+        
+        # Calculate scaling factors
+        scale_w = container_size[0] / orig_width
+        scale_h = container_size[1] / orig_height
+        scale = min(scale_w, scale_h)  # Use the smaller scaling factor
+        
+        # Calculate new dimensions
+        new_width = int(orig_width * scale)
+        new_height = int(orig_height * scale)
+        
+        # Create a new blank image with the container size
+        background = Image.new('RGB', container_size, (43, 43, 43))  # Using dark theme background color
+        
+        # Resize image maintaining aspect ratio
+        resized_img = img.resize(
+            (new_width, new_height),
+            Image.Resampling.LANCZOS
+        )
+        
+        paste_x = (container_size[0] - new_width) // 2
+        paste_y = (container_size[1] - new_height) // 2
+        
+        background.paste(resized_img, (paste_x, paste_y))
+        
+        return background
+        
     except Exception as e:
-        logger.error(f"Error generating thumbnail for {image_path}: {e}")
+        logger.error(f"Error generating thumbnail for {file_path}: {e}")
         return None
 
 def get_safe_size(file_stat) -> int:
@@ -41,14 +89,14 @@ def get_safe_size(file_stat) -> int:
         return file_stat.st_size
     except Exception:
         return 0
-    
+
 def get_safe_time(timestamp) -> str:
     try:
         return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return "Unknown"
-    
-def get_file_metadate(filepath: str) -> Dict:
+
+def get_file_metadata(filepath: str) -> Dict:
     try:
         file_stat = os.stat(filepath)
         file_type = mimetypes.guess_type(filepath)[0] or "unknown"
@@ -56,21 +104,21 @@ def get_file_metadate(filepath: str) -> Dict:
         metadata = {
             "name": os.path.basename(filepath),
             "size": get_safe_size(file_stat),
-            "created": get_safe_time(file_stat.st_time),
+            "created": get_safe_time(file_stat.st_ctime),
             "modified": get_safe_time(file_stat.st_mtime),
             "type": file_type,
         }
         
-        if metadata["size"] < 100*1024*1024:
+        if metadata["size"] < 100 * 1024 * 1024:
             metadata["hash"] = get_file_hash(filepath)
         else:
             metadata["hash"] = "large_file"
         
-        if file_type and file_type.startswith("image"):
+        if file_type and file_type.startswith('image'):
             try:
                 with Image.open(filepath) as img:
-                    metadate.update({
-                        "dimensions":img.size,
+                    metadata.update({
+                        "dimensions": img.size,
                         "format": img.format,
                         "mode": img.mode
                     })
@@ -80,7 +128,8 @@ def get_file_metadate(filepath: str) -> Dict:
                     "dimensions": "unknown",
                     "format": "unknown",
                     "mode": "unknown"
-                }) 
+                })
+        
         return metadata
     except Exception as e:
         logger.error(f"Error getting metadata for {filepath}: {e}")
@@ -101,7 +150,7 @@ def safe_copy_file(src: str, dest: str) -> bool:
     except Exception as e:
         logger.error(f"Error copying file {src} to {dest}: {e}")
         return False
-    
+
 def generate_unique_filename(filepath: str) -> str:
     directory = os.path.dirname(filepath)
     filename = os.path.basename(filepath)
@@ -109,10 +158,7 @@ def generate_unique_filename(filepath: str) -> str:
     counter = 1
     
     while os.path.exists(filepath):
-        filepath = os.path.join(directory, f"{name}_{counter}{ext}")  
-        counter +=1
-        
+        filepath = os.path.join(directory, f"{name}_{counter}{ext}")
+        counter += 1
+    
     return filepath
-        
-    
-    
