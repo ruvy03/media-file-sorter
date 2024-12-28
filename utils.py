@@ -51,32 +51,27 @@ def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optio
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        # Get original dimensions
-        orig_width = img.width
-        orig_height = img.height
+        # Calculate new height (slightly smaller than container height)
+        container_height = container_size[1]
+        target_height = int(container_height * 0.95)  # 95% of container height
         
-        # Calculate scaling factors
-        scale_w = container_size[0] / orig_width
-        scale_h = container_size[1] / orig_height
-        scale = min(scale_w, scale_h)  # Use the smaller scaling factor
+        # Calculate scale factor based on height
+        scale_factor = target_height / img.height
         
-        # Calculate new dimensions
-        new_width = int(orig_width * scale)
-        new_height = int(orig_height * scale)
+        # Calculate new width maintaining aspect ratio
+        new_width = int(img.width * scale_factor)
         
-        # Create a new blank image with the container size
-        background = Image.new('RGB', container_size, (43, 43, 43))  # Using dark theme background color
-        
-        # Resize image maintaining aspect ratio
+        # Resize image
         resized_img = img.resize(
-            (new_width, new_height),
+            (new_width, target_height),
             Image.Resampling.LANCZOS
         )
         
-        paste_x = (container_size[0] - new_width) // 2
-        paste_y = (container_size[1] - new_height) // 2
-        
-        background.paste(resized_img, (paste_x, paste_y))
+        # Create centered background
+        background = Image.new('RGB', container_size, (43, 43, 43))
+        x = (container_size[0] - new_width) // 2
+        y = (container_size[1] - target_height) // 2
+        background.paste(resized_img, (x, y))
         
         return background
         

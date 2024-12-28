@@ -174,7 +174,7 @@ class FileOrganizerGUI:
         folders_frame.rowconfigure(0, weight=1)
         
         # Scrollable frame for folder buttons
-        self.folders_canvas = tk.Canvas(folders_frame, bg=DarkTheme.BG, height=200)  # Increased height
+        self.folders_canvas = tk.Canvas(folders_frame, bg=DarkTheme.BG, height=150)  # Increased height
         self.folders_canvas.grid(row=0, column=0, sticky="nsew")
         
         scrollbar = ttk.Scrollbar(folders_frame, orient="vertical", command=self.folders_canvas.yview)
