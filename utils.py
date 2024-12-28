@@ -51,26 +51,27 @@ def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optio
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        # Calculate new height (slightly smaller than container height)
-        container_height = container_size[1]
-        target_height = int(container_height * 0.95)  # 95% of container height
+        # Calculate scaling factors for both width and height
+        width_ratio = container_size[0] / img.width
+        height_ratio = container_size[1] / img.height
         
-        # Calculate scale factor based on height
-        scale_factor = target_height / img.height
+        # Use the smaller ratio to ensure the image fits entirely within the container
+        scale_factor = min(width_ratio, height_ratio) * 0.95  # 95% of the container size for padding
         
-        # Calculate new width maintaining aspect ratio
+        # Calculate new dimensions
         new_width = int(img.width * scale_factor)
+        new_height = int(img.height * scale_factor)
         
         # Resize image
         resized_img = img.resize(
-            (new_width, target_height),
+            (new_width, new_height),
             Image.Resampling.LANCZOS
         )
         
         # Create centered background
         background = Image.new('RGB', container_size, (43, 43, 43))
         x = (container_size[0] - new_width) // 2
-        y = (container_size[1] - target_height) // 2
+        y = (container_size[1] - new_height) // 2
         background.paste(resized_img, (x, y))
         
         return background

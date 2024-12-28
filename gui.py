@@ -2,12 +2,13 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 import os
-from typing import Dict, List
+from typing import Dict, List, Tuple, Optional
 from scanner import FileScanner
 from organizer import FileOrganizer
 from utils import generate_thumbnail, get_file_metadata
 import threading
 from video_player import VideoPlayer
+import cv2
 
 class DarkTheme:
     """Dark theme color scheme"""
@@ -115,26 +116,26 @@ class FileOrganizerGUI:
         
         # Preview frame (right side)
         preview_frame = ttk.Frame(main_frame)
-        preview_frame.columnconfigure(0, weight=1)  # Make the column expandable
+        preview_frame.columnconfigure(0, weight=1)
         
-        # Fixed-size preview container
-        self.preview_container = ttk.Frame(preview_frame, width=400, height=300)
-        self.preview_container.grid(row=0, column=0, pady=10, padx=10)
-        self.preview_container.grid_propagate(False)  # Prevent size changes
+        # Preview container that will expand with the window
+        self.preview_container = ttk.Frame(preview_frame)
+        self.preview_container.grid(row=0, column=0, pady=10, padx=10, sticky="nsew")
+        preview_frame.rowconfigure(0, weight=1)  # Allow the container to expand vertically
         
         # Canvas for preview with dark theme background
         self.preview_canvas = tk.Canvas(
             self.preview_container,
-            width=400,
-            height=300,
             bg=DarkTheme.BG,
             highlightthickness=0
         )
         self.preview_canvas.pack(fill=tk.BOTH, expand=True)
         
+        # Bind resize event to update preview
+        self.preview_canvas.bind('<Configure>', lambda e: self.on_canvas_resize(e))
+        
         # Create preview label
         self.preview_label = ttk.Label(self.preview_canvas)
-        
         # Rename frame
         rename_frame = ttk.Frame(preview_frame)
         rename_frame.grid(row=1, column=0, pady=5, padx=10, sticky="ew")
@@ -198,53 +199,66 @@ class FileOrganizerGUI:
         main_frame.add(list_frame, weight=1)
         main_frame.add(preview_frame, weight=3)
     
-    def update_preview(self):
-        """Update the preview display with the selected file."""
-        if not self.selected_file:
-            return
-            
-        file_path = self.selected_file['path']
-        container_size = (800, 600)
-        
-        # Clear existing preview
-        self.preview_label.configure(image='')
-        self.preview_canvas.delete("all")
-        
-        # Cleanup existing video player if any
-        if self.video_player:
-            self.video_player.cleanup()
-            self.video_player.frame.pack_forget()
-            self.video_player.controls.pack_forget()
-            self.video_player = None
-        
-        # Check if the file is a video
-        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-            # Hide canvas and show video player
-            self.preview_canvas.pack_forget()
-            self.video_player = VideoPlayer(self.preview_container)
-            self.video_player.frame.pack(fill=tk.BOTH, expand=True)
-            self.video_player.controls.pack(fill=tk.X, pady=5)
-            self.video_player.load_video(file_path)
-        else:
-            # Show image thumbnail
-            self.preview_canvas.pack(fill=tk.BOTH, expand=True)
-            thumbnail = generate_thumbnail(file_path, container_size)
-            if thumbnail:
-                self.current_thumbnail = ImageTk.PhotoImage(thumbnail)
-                self.preview_canvas.create_image(
-                    400,
-                    300,
-                    image=self.current_thumbnail,
-                    anchor="center"
-                )
+    def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optional[Image.Image]:
+        try:
+            if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                # Handle video files
+                cap = cv2.VideoCapture(file_path)
+                ret, frame = cap.read()
+                cap.release()
+                
+                if ret:
+                    # Convert BGR to RGB
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(frame_rgb)
+                else:
+                    return None
             else:
-                self.current_thumbnail = None
+                # Handle image files
+                img = Image.open(file_path)
+            
+            # Convert to RGB if necessary
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            
+            # Calculate scaling factors for both width and height
+            width_ratio = container_size[0] / img.width
+            height_ratio = container_size[1] / img.height
+            
+            # Use the smaller ratio to ensure the image fits entirely within the container
+            scale_factor = min(width_ratio, height_ratio) * 0.95  # 95% of the container size for padding
+            
+            # Calculate new dimensions
+            new_width = int(img.width * scale_factor)
+            new_height = int(img.height * scale_factor)
+            
+            # Resize image
+            resized_img = img.resize(
+                (new_width, new_height),
+                Image.Resampling.LANCZOS
+            )
+            
+            # Create centered background
+            background = Image.new('RGB', container_size, (43, 43, 43))
+            x = (container_size[0] - new_width) // 2
+            y = (container_size[1] - new_height) // 2
+            background.paste(resized_img, (x, y))
+            
+            return background
+            
+        except Exception as e:
+            return None
         
     def create_status_bar(self):
         self.status_var = tk.StringVar()
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.grid(row=2, column=0, sticky="ew")
         self.status_var.set("Ready")
+        
+    def on_canvas_resize(self, event):
+        """Handle canvas resize events by updating the preview."""
+        if hasattr(self, 'selected_file') and self.selected_file:
+            self.update_preview()
         
     def add_output_folder(self):
         folder_path = filedialog.askdirectory(title="Select Output Folder")
@@ -376,6 +390,61 @@ class FileOrganizerGUI:
                 f"{metadata['size'] / 1024:.1f} KB"
             ))
             
+    def update_preview(self):
+        """Update the preview display with the selected file."""
+        if not self.selected_file:
+            return
+            
+        file_path = self.selected_file['path']
+        
+        # Get the actual container dimensions
+        container_width = self.preview_canvas.winfo_width()
+        container_height = self.preview_canvas.winfo_height()
+        container_size = (container_width, container_height)
+        
+        # Clear existing preview
+        self.preview_label.configure(image='')
+        self.preview_canvas.delete("all")
+        
+        # Cleanup existing video player if any
+        if self.video_player:
+            self.video_player.cleanup()
+            self.video_player.frame.pack_forget()
+            self.video_player.controls.pack_forget()
+            self.video_player = None
+        
+        # Check if the file is a video
+        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            # Hide canvas and show video player
+            self.preview_canvas.pack_forget()
+            self.video_player = VideoPlayer(self.preview_container)
+            self.video_player.frame.pack(fill=tk.BOTH, expand=True)
+            self.video_player.controls.pack(fill=tk.X, pady=5)
+            self.video_player.load_video(file_path)
+        else:
+            # Show image thumbnail
+            self.preview_canvas.pack(fill=tk.BOTH, expand=True)
+            thumbnail = generate_thumbnail(file_path, container_size)
+            if thumbnail:
+                self.current_thumbnail = ImageTk.PhotoImage(thumbnail)
+                
+                # Center the image and make it fill the canvas while maintaining aspect ratio
+                canvas_width = self.preview_canvas.winfo_width()
+                canvas_height = self.preview_canvas.winfo_height()
+                
+                # Calculate the center coordinates of the canvas
+                center_x = canvas_width // 2
+                center_y = canvas_height // 2
+                
+                self.preview_canvas.create_image(
+                    center_x,
+                    center_y,
+                    image=self.current_thumbnail,
+                    anchor="center"
+                )
+            else:
+                self.current_thumbnail = None
+                
     def on_file_select(self, event):
         """Handle file selection event."""
         selection = self.file_list.selection()
