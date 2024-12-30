@@ -31,8 +31,9 @@ class FileOrganizerGUI:
         self.selected_file: Dict = None
         self.output_folders: Dict[str, str] = {}  # name: path
         self.current_thumbnail = None  # Keep reference to prevent garbage collection
-        self.video_player = None  # Reference to video player instance
-        
+        self.video_player = None  
+        self.PREVIEW_WIDTH = 800  
+        self.PREVIEW_HEIGHT = 600
         self.setup_theme()
         self.setup_gui()
         
@@ -118,24 +119,28 @@ class FileOrganizerGUI:
         preview_frame = ttk.Frame(main_frame)
         preview_frame.columnconfigure(0, weight=1)
         
-        # Preview container that will expand with the window
-        self.preview_container = ttk.Frame(preview_frame)
-        self.preview_container.grid(row=0, column=0, pady=10, padx=10, sticky="nsew")
-        preview_frame.rowconfigure(0, weight=1)  # Allow the container to expand vertically
+        # Fixed-size preview container
+        self.preview_container = ttk.Frame(
+            preview_frame,
+            width=self.PREVIEW_WIDTH,
+            height=self.PREVIEW_HEIGHT
+        )
+        self.preview_container.grid(row=0, column=0, pady=10, padx=10, sticky="n")
+        self.preview_container.grid_propagate(False)  # Prevent size changes
         
         # Canvas for preview with dark theme background
         self.preview_canvas = tk.Canvas(
             self.preview_container,
             bg=DarkTheme.BG,
+            width=self.PREVIEW_WIDTH,
+            height=self.PREVIEW_HEIGHT,
             highlightthickness=0
         )
         self.preview_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Bind resize event to update preview
-        self.preview_canvas.bind('<Configure>', lambda e: self.on_canvas_resize(e))
-        
         # Create preview label
         self.preview_label = ttk.Label(self.preview_canvas)
+        
         # Rename frame
         rename_frame = ttk.Frame(preview_frame)
         rename_frame.grid(row=1, column=0, pady=5, padx=10, sticky="ew")
@@ -155,7 +160,7 @@ class FileOrganizerGUI:
         
         self.metadata_text = tk.Text(
             metadata_frame,
-            height=10,  # Increased height
+            height=5,  # Increased height
             width=40,
             bg=DarkTheme.BG,
             fg=DarkTheme.FG,
@@ -397,10 +402,8 @@ class FileOrganizerGUI:
             
         file_path = self.selected_file['path']
         
-        # Get the actual container dimensions
-        container_width = self.preview_canvas.winfo_width()
-        container_height = self.preview_canvas.winfo_height()
-        container_size = (container_width, container_height)
+        # Use fixed container dimensions
+        container_size = (self.PREVIEW_WIDTH, self.PREVIEW_HEIGHT)
         
         # Clear existing preview
         self.preview_label.configure(image='')
@@ -417,7 +420,9 @@ class FileOrganizerGUI:
         if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
             # Hide canvas and show video player
             self.preview_canvas.pack_forget()
-            self.video_player = VideoPlayer(self.preview_container)
+            self.video_player = VideoPlayer(self.preview_container, 
+                                          width=self.PREVIEW_WIDTH,
+                                          height=self.PREVIEW_HEIGHT)
             self.video_player.frame.pack(fill=tk.BOTH, expand=True)
             self.video_player.controls.pack(fill=tk.X, pady=5)
             self.video_player.load_video(file_path)
@@ -428,13 +433,9 @@ class FileOrganizerGUI:
             if thumbnail:
                 self.current_thumbnail = ImageTk.PhotoImage(thumbnail)
                 
-                # Center the image and make it fill the canvas while maintaining aspect ratio
-                canvas_width = self.preview_canvas.winfo_width()
-                canvas_height = self.preview_canvas.winfo_height()
-                
-                # Calculate the center coordinates of the canvas
-                center_x = canvas_width // 2
-                center_y = canvas_height // 2
+                # Center the image in the fixed-size canvas
+                center_x = self.PREVIEW_WIDTH // 2
+                center_y = self.PREVIEW_HEIGHT // 2
                 
                 self.preview_canvas.create_image(
                     center_x,
