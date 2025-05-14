@@ -10,6 +10,7 @@ def setup_environment():
     mimetypes.add_type('image/heic', '.heic')
     mimetypes.add_type('video/mp4', '.mp4')
     mimetypes.add_type('audio/mp3', '.mp3')
+    mimetypes.add_type('video/webm', '.webm')
 
 def main():
     try:

@@ -206,7 +206,7 @@ class FileOrganizerGUI:
     
     def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optional[Image.Image]:
         try:
-            if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+            if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
                 # Handle video files
                 cap = cv2.VideoCapture(file_path)
                 ret, frame = cap.read()
@@ -417,7 +417,7 @@ class FileOrganizerGUI:
             self.video_player = None
         
         # Check if the file is a video
-        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
             # Hide canvas and show video player
             self.preview_canvas.pack_forget()
             self.video_player = VideoPlayer(self.preview_container, 

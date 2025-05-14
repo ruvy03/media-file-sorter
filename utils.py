@@ -31,7 +31,7 @@ def get_file_hash(filepath: str) -> str:
 
 def generate_thumbnail(file_path: str, container_size: Tuple[int, int]) -> Optional[Image.Image]:
     try:
-        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+        if file_path.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
             # Handle video files
             cap = cv2.VideoCapture(file_path)
             ret, frame = cap.read()
